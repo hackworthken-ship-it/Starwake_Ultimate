@@ -48,7 +48,7 @@ showing its point value. It holds that overview for a couple seconds, then
 glides back down to exactly where you docked. Press Space (desktop) or the
 trigger (VR) at any time to skip straight to the wave-clear screen.
 
-## Sound
+## Sound &amp; gameplay faders
 
 - A looping ambient soundtrack plays once you press Start.
 - Steering has a directional blip (pitch = up/down, stereo pan = left/right)
@@ -57,14 +57,20 @@ trigger (VR) at any time to skip straight to the wave-clear screen.
   swaps, and menu confirms all have their own sound effects — everything is
   generated procedurally in code except the soundtrack itself, so there's
   nothing extra to load.
-- Click the **gear icon** (top right) for **Music** and **Sound Effects**
-  volume faders on desktop. Levels are remembered between visits (via
-  localStorage).
+- Click the **gear icon** (top right) for **Music**, **Sound Effects**, and
+  **Ring Size Swing** faders on desktop. Levels are remembered between
+  visits (via localStorage).
+- **Ring Size Swing** controls how dramatic the "rings start huge and shrink
+  as you progress" effect is. At 0% every ring is the same (small) size and
+  worth max points — the mechanic is effectively off. 100% (default) is a
+  big, obvious swing: the very first ring you see nearly fills the screen.
+  200% is even more extreme. Points scale automatically with it — bigger
+  rings are always worth less, smaller ones more, whatever the setting.
 - **In VR**, use the **grip button** to open/close an in-scene 3D version of
-  the same sound panel — point a controller at a slider and hold the
-  **trigger** to drag it. This works reliably regardless of whether the
-  browser supports WebXR's DOM Overlay feature, so it's the one to use on
-  the Quest Browser. Gameplay pauses while the panel is open.
+  the same panel — point a controller at a slider and hold the **trigger**
+  to drag it. This works reliably regardless of whether the browser
+  supports WebXR's DOM Overlay feature, so it's the one to use on the Quest
+  Browser. Gameplay pauses while the panel is open.
 
 ## Running it
 
