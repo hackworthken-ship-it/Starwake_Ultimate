@@ -374,26 +374,15 @@ let nextSpawnZ = SPAWN_Z;
 const RING_COLORS = [0x39d0ff, 0x8a5bff, 0x39ffb0, 0xffcf39, 0xff5b7a, 0xff9f39];
 
 // Rings start huge (easy, low value) and shrink toward their baseline size
-// as you rack up rings over the whole run — smaller ring = more points. How
-// dramatic that swing is can be tuned live via the "Ring Size Swing" fader
-// (0% = no variation at all, 100% = the default dramatic swing, up to 200%
-// for something even more extreme).
+// as you rack up rings over the whole run — smaller ring = more points.
 let totalRingsSpawned = 0;
-const RING_BASE_RADIUS = 2.1;          // settled size once fully shrunk
-const RING_START_RADIUS_AT_100 = 9.5;  // starting size when the fader is at 100%
-const RING_SHRINK_OVER = 24;           // rings encountered before reaching baseline size
-const RING_MIN_POINTS_AT_100 = 25;     // points for the very first, biggest ring, at 100%
-const RING_MAX_POINTS = 260;           // points once a ring reaches baseline size (always)
+const RING_START_RADIUS = 4.6;
+const RING_BASE_RADIUS = 2.1;
+const RING_SHRINK_OVER = 40; // rings encountered before reaching baseline size
+const RING_MIN_POINTS = 50;
+const RING_MAX_POINTS = 180;
 const RING_HIT_COLOR = 0x3dff8a;
 const RING_MISS_COLOR = 0xff3b4e;
-
-function currentRingStartRadius() {
-  return THREE.MathUtils.lerp(RING_BASE_RADIUS, RING_START_RADIUS_AT_100, ringSizeScale);
-}
-function currentRingMinPoints() {
-  // clamp so extreme (>100%) settings can't push this below a sane floor
-  return Math.max(5, THREE.MathUtils.lerp(RING_MAX_POINTS, RING_MIN_POINTS_AT_100, ringSizeScale));
-}
 
 const obstacles = []; // { type:'ring'|'asteroid'|'shuttle', mesh, x, y, radius, points, resolved }
 const projectiles = [];
@@ -528,15 +517,9 @@ function removeRing(o) {
 
 function spawnRing(z) {
   const t = easeOutCubic(ringProgress());
-  const startR = currentRingStartRadius();
-  const minPts = currentRingMinPoints();
-  const r = THREE.MathUtils.lerp(startR, RING_BASE_RADIUS, t);
+  const r = THREE.MathUtils.lerp(RING_START_RADIUS, RING_BASE_RADIUS, t);
   const tube = THREE.MathUtils.clamp(r * 0.062, 0.09, 0.22);
-  // guard against startR === RING_BASE_RADIUS (fader at 0%), which would
-  // otherwise be a zero-width mapLinear range
-  const points = Math.abs(startR - RING_BASE_RADIUS) < 0.001
-    ? Math.round(RING_MAX_POINTS)
-    : Math.round(THREE.MathUtils.mapLinear(r, startR, RING_BASE_RADIUS, minPts, RING_MAX_POINTS));
+  const points = Math.round(THREE.MathUtils.mapLinear(r, RING_START_RADIUS, RING_BASE_RADIUS, RING_MIN_POINTS, RING_MAX_POINTS));
   const geo = new THREE.TorusGeometry(r, tube, 12, 40);
   const color = RING_COLORS[(level - 1) % RING_COLORS.length];
   const mat = new THREE.MeshStandardMaterial({ color, emissive: color, emissiveIntensity: 0.65, roughness: 0.35, metalness: 0.4 });
@@ -843,10 +826,10 @@ function updateShipNotice(dt) {
 }
 
 // ---------- Audio (procedural sfx + looping soundtrack, both fader-controlled) ----
-function loadVolume(key, fallback, max = 1) {
+function loadVolume(key, fallback) {
   try {
     const v = localStorage.getItem(key);
-    return v === null ? fallback : THREE.MathUtils.clamp(parseFloat(v), 0, max);
+    return v === null ? fallback : THREE.MathUtils.clamp(parseFloat(v), 0, 1);
   } catch { return fallback; }
 }
 function saveVolume(key, v) {
@@ -855,11 +838,6 @@ function saveVolume(key, v) {
 
 let musicVolume = loadVolume('starwake-music-vol', 0.35);
 let sfxVolume = loadVolume('starwake-sfx-vol', 1.0);
-// How dramatic the ring size/points swing is, as a multiplier: 0 = every
-// ring is the same (baseline) size and worth max points, 1 = the default
-// dramatic swing, up to 2 for something even more extreme. Adjustable live
-// via the "Ring Size Swing" fader.
-let ringSizeScale = loadVolume('starwake-ring-scale', 1.0, 2);
 
 let audioCtx = null;
 let sfxBusGain = null;
@@ -1018,8 +996,6 @@ const musicSlider = document.getElementById('music-vol');
 const sfxSlider = document.getElementById('sfx-vol');
 const musicValLabel = document.getElementById('music-vol-val');
 const sfxValLabel = document.getElementById('sfx-vol-val');
-const ringScaleSlider = document.getElementById('ring-scale');
-const ringScaleValLabel = document.getElementById('ring-scale-val');
 
 function setMusicVolume(v) {
   musicVolume = THREE.MathUtils.clamp(v, 0, 1);
@@ -1037,20 +1013,12 @@ function setSfxVolume(v) {
   saveVolume('starwake-sfx-vol', sfxVolume);
   drawVRSettingsPanel();
 }
-function setRingSizeScale(v) {
-  ringSizeScale = THREE.MathUtils.clamp(v, 0, 2);
-  ringScaleSlider.value = Math.round(ringSizeScale * 100);
-  ringScaleValLabel.textContent = `${ringScaleSlider.value}%`;
-  saveVolume('starwake-ring-scale', ringSizeScale);
-  drawVRSettingsPanel();
-}
 
 settingsToggle.addEventListener('click', () => {
   settingsPanel.classList.toggle('open');
 });
 musicSlider.addEventListener('input', () => setMusicVolume(musicSlider.value / 100));
 sfxSlider.addEventListener('input', () => setSfxVolume(sfxSlider.value / 100));
-ringScaleSlider.addEventListener('input', () => setRingSizeScale(ringScaleSlider.value / 100));
 
 // ---------- VR controllers + in-scene settings panel ------------------------
 // The DOM panel above only reaches players in VR via WebXR's DOM Overlay
@@ -1082,16 +1050,16 @@ function getRightController() {
   return null;
 }
 
-const VR_PANEL_W = 480, VR_PANEL_H = 380;
-const vrSettings = makeCanvasPanel(1.3, 1.03, VR_PANEL_W, VR_PANEL_H);
+const VR_PANEL_W = 480, VR_PANEL_H = 340;
+const vrSettings = makeCanvasPanel(1.3, 0.92, VR_PANEL_W, VR_PANEL_H);
 vrSettings.mesh.position.set(0, 0, -1.7);
 vrSettings.mesh.renderOrder = 1000;
 camera.add(vrSettings.mesh);
 vrSettings.mesh.visible = false;
 
 let vrSettingsOpen = false;
-const VR_TRACK = { x0: 60, x1: 420, width: 360, musicY: 98, sfxY: 156, ringY: 214, rowHalfHeight: 24 };
-const VR_BUTTON = { x0: 60, x1: 420, y0: 248, y1: 300 };
+const VR_TRACK = { x0: 60, x1: 420, width: 360, musicY: 118, sfxY: 186, rowHalfHeight: 24 };
+const VR_BUTTON = { x0: 60, x1: 420, y0: 224, y1: 284 };
 
 function drawVRSettingsPanel() {
   const { ctx, canvas, tex } = vrSettings;
@@ -1106,31 +1074,30 @@ function drawVRSettingsPanel() {
 
   ctx.textAlign = 'center';
   ctx.fillStyle = '#8fd6ff';
-  ctx.font = '800 28px "Segoe UI", sans-serif';
-  ctx.fillText('SOUND & SHIP', canvas.width / 2, 40);
+  ctx.font = '800 30px "Segoe UI", sans-serif';
+  ctx.fillText('SOUND & SHIP', canvas.width / 2, 44);
 
-  function drawTrack(y, label, fraction, displayPercent) {
+  function drawTrack(y, label, value) {
     ctx.textAlign = 'left';
     ctx.fillStyle = '#bcd6ee';
-    ctx.font = '600 19px "Segoe UI", sans-serif';
-    ctx.fillText(label, VR_TRACK.x0, y - 20);
+    ctx.font = '600 21px "Segoe UI", sans-serif';
+    ctx.fillText(label, VR_TRACK.x0, y - 22);
     ctx.textAlign = 'right';
-    ctx.fillText(`${displayPercent}%`, VR_TRACK.x1, y - 20);
+    ctx.fillText(`${Math.round(value * 100)}%`, VR_TRACK.x1, y - 22);
 
     ctx.fillStyle = 'rgba(255,255,255,0.15)';
     roundRect(ctx, VR_TRACK.x0, y - 8, VR_TRACK.width, 16, 8);
     ctx.fill();
     ctx.fillStyle = '#8fd6ff';
-    roundRect(ctx, VR_TRACK.x0, y - 8, VR_TRACK.width * fraction, 16, 8);
+    roundRect(ctx, VR_TRACK.x0, y - 8, VR_TRACK.width * value, 16, 8);
     ctx.fill();
     ctx.beginPath();
-    ctx.arc(VR_TRACK.x0 + VR_TRACK.width * fraction, y, 13, 0, Math.PI * 2);
+    ctx.arc(VR_TRACK.x0 + VR_TRACK.width * value, y, 13, 0, Math.PI * 2);
     ctx.fillStyle = '#eaf6ff';
     ctx.fill();
   }
-  drawTrack(VR_TRACK.musicY, 'MUSIC', musicVolume, Math.round(musicVolume * 100));
-  drawTrack(VR_TRACK.sfxY, 'SOUND EFFECTS', sfxVolume, Math.round(sfxVolume * 100));
-  drawTrack(VR_TRACK.ringY, 'RING SIZE SWING', ringSizeScale / 2, Math.round(ringSizeScale * 100));
+  drawTrack(VR_TRACK.musicY, 'MUSIC', musicVolume);
+  drawTrack(VR_TRACK.sfxY, 'SOUND EFFECTS', sfxVolume);
 
   // Switch-ship button — the reliable way to swap ships in VR, since it
   // reuses the same pointer+trigger interaction the sliders already use.
@@ -1153,8 +1120,8 @@ function drawVRSettingsPanel() {
 
   ctx.textAlign = 'center';
   ctx.fillStyle = '#8fb0cc';
-  ctx.font = '600 16px "Segoe UI", sans-serif';
-  ctx.fillText('Grip: open/close  ·  Trigger: point + hold/tap', canvas.width / 2, canvas.height - 18);
+  ctx.font = '600 17px "Segoe UI", sans-serif';
+  ctx.fillText('Grip: open/close  ·  Trigger: point + hold/tap', canvas.width / 2, canvas.height - 20);
 
   ctx.textAlign = 'left';
   tex.needsUpdate = true;
@@ -1165,7 +1132,6 @@ drawVRSettingsPanel();
 // (or default) volumes to both, and to the actual audio graph.
 setMusicVolume(musicVolume);
 setSfxVolume(sfxVolume);
-setRingSizeScale(ringSizeScale);
 
 function setVRSettingsOpen(open) {
   vrSettingsOpen = open;
@@ -1195,10 +1161,6 @@ function hitToPanelAction(hit) {
   if (Math.abs(py - VR_TRACK.sfxY) <= VR_TRACK.rowHalfHeight) {
     return { type: 'slider', row: 'sfx', value: THREE.MathUtils.clamp((px - VR_TRACK.x0) / VR_TRACK.width, 0, 1) };
   }
-  if (Math.abs(py - VR_TRACK.ringY) <= VR_TRACK.rowHalfHeight) {
-    const fraction = THREE.MathUtils.clamp((px - VR_TRACK.x0) / VR_TRACK.width, 0, 1);
-    return { type: 'slider', row: 'ringscale', value: fraction * 2 }; // fraction 0-1 -> scale 0-2
-  }
   if (px >= VR_BUTTON.x0 && px <= VR_BUTTON.x1 && py >= VR_BUTTON.y0 && py <= VR_BUTTON.y1) {
     return { type: 'button' };
   }
@@ -1221,8 +1183,7 @@ function updateVRSettingsInteraction() {
     if (action.type === 'slider') {
       // continuous — held trigger drags the slider live
       if (action.row === 'music') setMusicVolume(action.value);
-      else if (action.row === 'sfx') setSfxVolume(action.value);
-      else if (action.row === 'ringscale') setRingSizeScale(action.value);
+      else setSfxVolume(action.value);
     } else if (action.type === 'button' && !prevPanelTrigger) {
       // edge-triggered — one tap, one switch (not a hold-to-repeat)
       switchShip(1);
